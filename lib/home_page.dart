@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:path_provider/path_provider.dart';
@@ -18,6 +19,8 @@ class _MyHomePageState extends State<MyHomePage> {
   final recorder = FlutterSoundRecorder();
   final player = FlutterSoundPlayer();
   bool isRecorderReady = false;
+  bool isLoading = false; // New flag to track loading state
+  String? apiResponse; // Variable to store API response
 
   @override
   void initState() {
@@ -46,18 +49,49 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<String> getTemporaryFilePath() async {
     final directory = await getTemporaryDirectory();
-    return '${directory.path}/audio.wav';
+    return '${directory.path}/saved_video.mp4';
   }
 
   Future<void> record() async {
     final path = await getTemporaryFilePath();
-    await recorder.startRecorder(toFile: path, codec: Codec.pcm16WAV);
+    await recorder.startRecorder(toFile: path, codec: Codec.aacMP4);
   }
 
   Future<void> stop() async {
     if (!isRecorderReady) return;
     final path = await recorder.stopRecorder();
     final audioFile = File(path!);
+
+    setState(() {
+      isLoading = true; // Set loading to true when API request starts
+    });
+
+    // Create FormData object with the video file
+    FormData formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(path, filename: 'saved_video.mp4'),
+    });
+
+    try {
+      // Make API request using Dio
+      var response = await Dio().post(
+        'http://3.70.0.121:8000/upload_video/?language=hin',
+        data: formData,
+      );
+
+      // Set API response to the variable
+      setState(() {
+        apiResponse = response.toString();
+      });
+
+      // Print response data
+      print('API Response: $apiResponse');
+    } catch (e) {
+      print('Error uploading video: $e');
+    } finally {
+      setState(() {
+        isLoading = false; // Set loading to false when API request completes
+      });
+    }
 
     print("recorded audio: $audioFile and this is the path $path");
   }
@@ -124,12 +158,23 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
               ),
             ),
-            ElevatedButton(
-              onPressed: () async {
-                await play();
-              },
-              child: const Text('Play Recorded Audio'),
-            ),
+            isLoading
+                ? const CircularProgressIndicator() // Show loading indicator while API request is in progress
+                : ElevatedButton(
+                    onPressed: () async {
+                      await play();
+                    },
+                    child: const Text('Fetch Translated Audio'),
+                  ),
+            // Display API response
+            if (apiResponse != null)
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  'API Response: $apiResponse',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
           ],
         ),
       ),
